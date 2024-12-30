@@ -1,11 +1,12 @@
-﻿
-using System.Collections.Concurrent;
-using System.Net;
+﻿using System.Net;
+using StackExchange.Redis;
 
-namespace CachingProx;
+namespace CachingProxy;
 class CachingProxy
 {
-    private static readonly ConcurrentDictionary<string, string> Cache = new(); //add redis
+    // private static readonly ConcurrentDictionary<string, string> Cache = new(); //add redis
+    private static IDatabase Cache = ConnectionMultiplexer.Connect("localhost:6379").GetDatabase();
+
     private static readonly HttpClient client = new();
 
     static async Task Main(string[] args)
@@ -31,9 +32,14 @@ class CachingProxy
         var cache = GetValueFromArgs("clearCache", args);
         if (cache != null)
         {
-            Cache.Clear();
-            Console.WriteLine("Cache cleared.");
-            return;
+            try{
+                await Cache.ExecuteAsync("FLUSHDB");
+                Console.WriteLine("Cache cleared.");
+            }
+            catch(Exception ex){
+                Console.WriteLine("Something went wrong while cleaning the Cache.");
+                return;
+            }
         }
 
         string prefix = $"http://localhost:{port}/";
@@ -47,7 +53,7 @@ class CachingProxy
         while(true)
         {
             HttpListenerContext context = await listener.GetContextAsync();
-            await Task.Run(() => HandleRequest(context, originUrl));
+            await Task.Run(() => HandleRequestAsync(context, originUrl));
         }
     }
 
@@ -66,22 +72,21 @@ class CachingProxy
         return null;
     }
 
-    private static async Task HandleRequest(HttpListenerContext context, string originUrl)
+    private static async Task HandleRequestAsync(HttpListenerContext context, string originUrl)
     {
         string requestPath = context.Request.Url.PathAndQuery;
         string requestUrl = $"{originUrl}{requestPath}";
         
-        if (Cache.TryGetValue(requestUrl, out string cachedResponse))
+        var resCached = await Cache.StringGetAsync(requestUrl);
+        if (resCached.HasValue)
         {
             Console.WriteLine($"Cache HIT: {requestUrl}");
-            context.Response.Headers["X-Cache"] = "HIT";
 
-            await WriteResponse(context, cachedResponse);
+            await WriteResponseAsync(context, resCached, true);
             return;
         }
 
         Console.WriteLine($"Cache MISS: {requestUrl}");
-        context.Response.Headers["X-Cache"] = "MISS";
 
         try
         {
@@ -90,22 +95,24 @@ class CachingProxy
             string responseBody = await forwardResponse.Content.ReadAsStringAsync();
 
             // Cache the response
-            Cache[requestUrl] = responseBody;
-            await WriteResponse(context, responseBody, forwardResponse.Content.Headers.ContentType?.MediaType);
+            await Cache.StringSetAsync(requestUrl, responseBody, TimeSpan.FromSeconds(60));
+            await WriteResponseAsync(context, responseBody, true, forwardResponse.Content.Headers.ContentType?.MediaType);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error forwarding request: {ex.Message}");
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-            await WriteResponse(context, "Internal server error");
+            await WriteResponseAsync(context, "Internal server error", false);
         }
 
         return;
     }
 
-    private static async Task WriteResponse(HttpListenerContext context, string responseBody, string contentType = "application/json")
+    private static async Task WriteResponseAsync(HttpListenerContext context, string responseBody, bool hitCache, string contentType = "application/json")
     {
         context.Response.ContentType = contentType;
+        context.Response.Headers["X-Cache"] = hitCache ? "HIT" : "MISS";
+        
         using (StreamWriter writer = new StreamWriter(context.Response.OutputStream))
         {
             await writer.WriteAsync(responseBody);
