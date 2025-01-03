@@ -1,3 +1,4 @@
+
 # How to Run
 
 1. Start your redis server;
@@ -20,3 +21,5 @@
 The caching proxy server starts on a defined user `<port>` and forward requests to the argument passed `<origin>`.
 If the user makes a request to http://localhost:<port\>/<some_resource>, the caching proxy server should forward the request to http://<origin\>/<some_resource> and
 return the response along with headers and cache the response.
+
+### This project was inspired by this [Roadmap.sh project](https://roadmap.sh/projects/caching-server)
