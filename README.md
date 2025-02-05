@@ -4,9 +4,9 @@
 1. Start your redis server;
 2. Change the connection info on line [8](https://github.com/GabrielHNE/CachingProxy/blob/main/CachingProxy/Program.cs#L8) in the Program.cs file;
 3. In your terminal run the `dotnet build` command to generate the `.exe` file;
-4. With the `.exe` file. You can start the program calling it by its name `CachingProxy` and passing its arguments;
+4. With the `.exe` file you can start the program by calling it by its name `CachingProxy` and passing its arguments;
   a. Arguments/options to run:
-    - `--port` is the port on which the caching proxy server will run;
+    - `--port` is the port on which the proxy server will run;
     - `--origin` is the URL of the server to which the requests will be forwarded;
     - `--clear-cache` clears the cache.
   
